@@ -1,0 +1,21 @@
+rules_version = '2';
+// Regras do Firestore do Nosso Patrimônio.
+// Para aplicar: console do Firebase → Firestore Database → Regras → colar e Publicar.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Só as duas contas da família.
+    function familia() {
+      return request.auth != null &&
+        request.auth.uid in ['SicxTnlR2mfYpzxM2LIxobRi7Sb2', 'MZ6DcpQwvYPlHwghQ77LW6Pk0yB3'];
+    }
+
+    match /ativos/{id}    { allow read, write: if familia(); }
+    match /meses/{id}     { allow read, write: if familia(); }
+    match /config/{id}    { allow read, write: if familia(); }
+    // Backups automáticos: podem ser criados e lidos, nunca alterados ou apagados.
+    match /snapshots/{id} { allow read, create: if familia(); }
+
+    // Formato antigo: mantido só para leitura, como cópia de segurança.
+    match /carteira/dados { allow read: if familia(); }
+  }
+}

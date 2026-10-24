@@ -2,11 +2,12 @@
 nosso-patrimonio-*.json
 *.backup.json
 
-# Ferramentas locais (skills, MCP, dependências)
+# Build e dependências
 node_modules/
+dist/
+
+# Ferramentas locais (skills, MCP)
 .claude/
 .mcp.json
 bencium-claude-code-design-skill/
-package.json
-package-lock.json
 .DS_Store
