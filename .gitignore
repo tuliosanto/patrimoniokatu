@@ -1,0 +1,12 @@
+# Backups e dados financeiros: NUNCA versionar
+nosso-patrimonio-*.json
+*.backup.json
+
+# Ferramentas locais (skills, MCP, dependências)
+node_modules/
+.claude/
+.mcp.json
+bencium-claude-code-design-skill/
+package.json
+package-lock.json
+.DS_Store
