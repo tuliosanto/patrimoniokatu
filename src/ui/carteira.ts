@@ -21,8 +21,11 @@ function editar(c: Ctx, a: Ativo | null, classe: ClasseId) {
         ${k.cotada ? `
         <div class="field"><label for="a-tk">Código <span class="hint">para cotação automática</span></label>
           <div class="inp"><input id="a-tk" name="ticker" autocomplete="off" spellcheck="false"></div></div>
-        <div class="field"><label for="a-q">Quantidade atual</label>
+        <div class="field"><label for="a-q">${k.id === 'dolar' ? 'Quantidade em US$' : 'Quantidade atual'}</label>
           <div class="inp"><input id="a-q" name="q" class="num" inputmode="decimal"></div></div>` : ''}
+        ${k.id === 'cdb' ? `
+        <div class="field"><label for="a-cdi">Rende quanto do CDI? <span class="hint">para a sugestão no fechamento</span></label>
+          <div class="inp"><input id="a-cdi" name="cdi" class="num" inputmode="decimal" placeholder="100"><span class="suf">%</span></div></div>` : ''}
         <div class="field"><label for="a-cls">Classe</label>
           <div class="inp"><select id="a-cls" name="classe">${CLASSES.map((x) => `<option value="${x.id}">${x.nome}</option>`).join('')}</select></div></div>
       </div>
@@ -37,6 +40,8 @@ function editar(c: Ctx, a: Ativo | null, classe: ClasseId) {
   const tk = f.elements.namedItem('ticker') as HTMLInputElement | null;
   const q = f.elements.namedItem('q') as HTMLInputElement | null;
   if (tk) tk.value = a?.ticker ?? '';
+  const cdiEl = f.elements.namedItem('cdi') as HTMLInputElement | null;
+  if (cdiEl && a?.taxaCdi) cdiEl.value = num(a.taxaCdi, a.taxaCdi % 1 ? 1 : 0);
   if (q) q.value = a?.q ? num(a.q, a.q % 1 ? 8 : 0).replace(/(,\d*?)0+$/, '$1').replace(/,$/, '') : '';
   d.querySelector<HTMLButtonElement>('button[value=cancel]')!.onclick = () => d.close();
   f.onsubmit = (e) => {
@@ -49,6 +54,7 @@ function editar(c: Ctx, a: Ativo | null, classe: ClasseId) {
       nome, classe: cl,
       ticker: tk ? tk.value.trim().toUpperCase() || undefined : a?.ticker,
       q: q ? lerNum(q.value) : a?.q,
+      taxaCdi: cdiEl ? lerNum(cdiEl.value) || undefined : a?.taxaCdi,
     };
     void salvarAtivo(novo);
     toast(a ? 'Ativo atualizado.' : `${nome} adicionado à carteira.`);
@@ -101,7 +107,7 @@ export function carteira(c: Ctx) {
               <div class="ativo-row">
                 <span class="nm" title=${a.nome}>${a.legado ? html`<i class="muted">Não detalhado</i>` : a.nome}
                   ${a.ticker && a.ticker !== a.nome ? html`<small>${a.ticker}</small>` : ''}${a.arquivado ? html`<small>arquivado</small>` : ''}</span>
-                <span class="r muted hide-sm">${k.cotada && q ? `${num(q, q % 1 ? 4 : 0)} un.` : ''}</span>
+                <span class="r muted hide-sm">${k.cotada && q ? (k.id === 'dolar' ? `US$ ${num(q, 2)}` : `${num(q, q % 1 ? 4 : 0)} un.`) : ''}</span>
                 <span class="r">${v ? brl(v) : html`<span class="muted">—</span>`}</span>
                 <span class="r muted hide-sm">${total && v ? pct(v / total) : ''}</span>
                 <span class="r">${a.legado ? html`<span class="muted" style="font-size:12.5px" title="Valor antigo ainda não separado em ativos. Separe no próximo fechamento.">separar no fechamento</span>` : html`

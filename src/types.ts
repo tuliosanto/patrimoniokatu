@@ -26,8 +26,10 @@ export interface Ativo {
   classe: ClasseId;
   /** Código na bolsa ou da cripto, quando houver (PETR4, BTC). */
   ticker?: string;
-  /** Quantidade atual (para classes cotadas). */
+  /** Quantidade atual (para classes cotadas; no Dólar, em US$). */
   q?: number;
+  /** Quanto do CDI o ativo rende (110 = 110% do CDI), para a sugestão de valor no fechamento. */
+  taxaCdi?: number;
   /** Ativo criado na migração para guardar o valor agregado dos meses antigos. */
   legado?: boolean;
   /** Fora da carteira: não aparece no fechamento, mas o histórico fica. */
@@ -67,6 +69,8 @@ export interface Mes {
 export interface Config {
   /** Meta de alocação por classe, em fração (0.25 = 25%). */
   metas: Partial<Record<ClasseId, number>>;
+  /** Token gratuito do brapi.dev, para cotações da B3. Fica só na nuvem, protegido pelas regras. */
+  brapiToken?: string;
   /** Versão do esquema; 2 = modelo por ativo. */
   versao: number;
   migradoEm?: number;

@@ -2,10 +2,11 @@ import { html } from 'lit-html';
 import { live } from 'lit-html/directives/live.js';
 import { CLASSES, mesesPendentes, totalMes, totalPorClasse } from '../calc';
 import { idLegado } from '../migrate';
+import { b3, cdi, cripto, motivo, ptax, type Cotacao } from '../cotacoes';
 import { excluirMes, salvarAtivo, salvarMes } from '../store';
 import type { Ativo, ClasseId, Mes, Posicao } from '../types';
 import type { Ctx } from './ctx';
-import { brl, brlS, lerNum, mesLongo, nomeMes, num, paraCampo, pctS, sinal, uid } from './format';
+import { brl, brlS, dataBr, lerNum, mesLongo, nomeMes, num, paraCampo, pct, pctS, sinal, uid } from './format';
 import { confirmar, toast } from './feedback';
 import { ic } from './icons';
 
@@ -26,6 +27,17 @@ interface Rascunho {
   sujo: boolean;
   erro?: string;
   novo: Partial<Record<ClasseId, { nome: string; q: string }>>;
+  /** Fechamento anterior: base das sugestões pelo CDI. */
+  anterior?: Mes;
+  /** De onde veio cada preço buscado automaticamente. */
+  fonte: Record<string, Cotacao>;
+  /** Data para a qual as cotações foram buscadas. */
+  cotadoEm?: string;
+  buscando: boolean;
+  avisosCot: string[];
+  infosCot: string[];
+  /** Quanto R$ 1 rendeu a 100% do CDI desde o fechamento anterior. */
+  fatorCdi?: number;
 }
 let r: Rascunho | null = null;
 export const fechamentoSujo = () => !!r?.sujo;
@@ -63,6 +75,8 @@ function iniciar(c: Ctx, alvo: string): Rascunho {
     copiadoDe: !existente && anterior ? anterior.id : undefined,
     sujo: false,
     novo: {},
+    anterior: existente ? [...meses].filter((m) => m.id < alvo).pop() : anterior,
+    fonte: {}, buscando: false, avisosCot: [], infosCot: [],
   };
   for (const a of ativos) {
     if (a.legado) continue;
@@ -70,10 +84,12 @@ function iniciar(c: Ctx, alvo: string): Rascunho {
     const k = CLASSES.find((x) => x.id === a.classe)!;
     if (pos) rr.v[a.id] = paraCampo(pos.v);
     if (k.cotada) {
-      const q = pos?.q ?? a.q;
-      if (q) rr.q[a.id] = q % 1 ? num(q, 8).replace(/0+$/, '') : num(q, 0);
+      let q = pos?.q ?? a.q;
+      // dólar migrado só tinha o valor em R$: a quantidade em US$ sai da cotação guardada no mês
+      if (!q && a.classe === 'dolar' && pos?.v && base?.cotacoes?.dolar) q = Math.round((pos.v / base.cotacoes.dolar) * 100) / 100;
+      if (q) rr.q[a.id] = fmtQ(q);
       const p = pos?.p ?? (pos?.v && q ? pos.v / q : undefined);
-      if (p) rr.p[a.id] = paraCampo(p);
+      if (p) rr.p[a.id] = fmtP(p);
     }
   }
   if (base) {
@@ -83,6 +99,78 @@ function iniciar(c: Ctx, alvo: string): Rascunho {
     }
   }
   return rr;
+}
+
+/** Preço com casas suficientes para quantidade × preço bater (PTAX tem 4). */
+const fmtP = (p: number) => paraCampo(p, p < 10 ? 4 : 2);
+const EXEMPLO: Record<ClasseId, string> = {
+  cdb: 'CDB Banco X 110% CDI', caixa: 'Conta corrente', acoes: 'PETR4', fii: 'HGLG11', etf_bdr: 'IVVB11', dolar: 'Conta em dólar', cripto: 'BTC',
+};
+const fmtQ = (q: number) => (q % 1 ? num(q, 8).replace(/0+$/, '') : num(q, 0));
+
+/* Busca preços na data do fechamento e o CDI desde o fechamento anterior.
+   Preenche só o preço; o valor sai de quantidade × preço, como se fosse digitado. */
+async function buscarCotacoes(c: Ctx, rr: Rascunho) {
+  if (rr.buscando || !/^\d{4}-\d{2}-\d{2}$/.test(rr.data)) return;
+  const data = rr.data;
+  rr.buscando = true; rr.avisosCot = []; rr.infosCot = []; c.redesenhar();
+  const token = c.s.estado.config.brapiToken;
+  const alvos = c.s.estado.ativos.filter((a) => {
+    if (a.legado || a.arquivado) return false;
+    const k = CLASSES.find((x) => x.id === a.classe)!;
+    return k.cotada;
+  });
+  const semToken = !token && alvos.some((a) => ['acoes', 'fii', 'etf_bdr'].includes(a.classe));
+  const tarefas = alvos.map((a) => async () => {
+    const codigo = (a.ticker || a.nome).trim();
+    try {
+      let cot: Cotacao | null = null;
+      if (a.classe === 'dolar') cot = await ptax(data);
+      else if (a.classe === 'cripto') cot = await cripto(codigo, data);
+      else if (token) cot = await b3(codigo, data, token);
+      else return;
+      if (!cot) { rr.avisosCot.push(`${a.nome}: sem cotação para ${dataBr(data)}`); return; }
+      if (rr.data !== data) return; // a data mudou no meio da busca
+      rr.fonte[a.id] = cot;
+      rr.p[a.id] = fmtP(cot.preco);
+      const q = lerNum(rr.q[a.id]);
+      if (q) rr.v[a.id] = paraCampo(q * cot.preco);
+    } catch (e) {
+      rr.avisosCot.push(`${a.nome}: ${motivo(e)}`);
+    }
+  });
+  // poucas ao mesmo tempo, para não estourar limite das APIs gratuitas
+  const fila = [...tarefas];
+  await Promise.all([0, 1, 2].map(async () => { while (fila.length) await fila.shift()!(); }));
+  try {
+    rr.fatorCdi = rr.anterior ? await cdi(rr.anterior.data, data) : undefined;
+  } catch (e) {
+    rr.avisosCot.push(`CDI: ${motivo(e)}`);
+  }
+  // classe com "não detalhado" cujos ativos ficaram todos cotados: a soma dos ativos passa a ser o total
+  for (const k of CLASSES) {
+    if (!k.cotada || rr.totCls[k.id] === undefined) continue;
+    const lin = visiveis(c.s.estado.ativos, k.id, rr);
+    if (lin.length && lin.every((a) => lerNum(rr.q[a.id]) && rr.fonte[a.id])) {
+      const soma = lin.reduce((t, a) => t + lerNum(rr.v[a.id]), 0);
+      rr.totCls[k.id] = paraCampo(soma);
+      rr.infosCot.push(`${k.nome}: todos os ativos foram cotados, então o total da classe passou a ser a soma deles (${brl(soma, 2)}) e o "não detalhado" foi zerado.`);
+    }
+  }
+  if (semToken) rr.avisosCot.unshift('Ações, FIIs e ETFs não foram buscados: cadastre o token gratuito do brapi em Ajustes.');
+  rr.buscando = false;
+  rr.cotadoEm = data;
+  if (alvos.length) rr.sujo = true;
+  c.redesenhar();
+}
+
+/** Sugestão de valor corrigido pelo CDI desde o fechamento anterior. */
+function sugestaoCdi(rr: Rascunho, a: Ativo | null, classe: ClasseId, ativos: Ativo[]): number | null {
+  if (!rr.fatorCdi || !rr.anterior) return null;
+  const base = a ? rr.anterior.posicoes[a.id]?.v : totalPorClasse(rr.anterior, ativos)[classe];
+  if (!base) return null;
+  const taxa = (a?.taxaCdi ?? 100) / 100;
+  return Math.round(base * (1 + (rr.fatorCdi - 1) * taxa) * 100) / 100;
 }
 
 const visiveis = (ativos: Ativo[], classe: ClasseId, rr: Rascunho) =>
@@ -175,14 +263,16 @@ export function fechar(c: Ctx) {
   const chave = (c.s.estado.meses.some((m) => m.id === alvo) ? 'ed:' : 'novo:') + alvo;
   if (!r || r.alvo !== alvo || (r.chave !== chave && !r.sujo)) r = iniciar(c, alvo);
   const rr = r;
+  if (!rr.editando && !rr.cotadoEm && !rr.buscando) queueMicrotask(() => void buscarCotacoes(c, rr));
   const conta = contas(c, rr);
   const set = (fn: () => void) => { fn(); rr.sujo = true; rr.erro = undefined; c.redesenhar(); };
   const txt = (e: Event) => (e.target as HTMLInputElement).value;
 
   const cotacao = (a: Ativo, campo: 'q' | 'p' | 'v', val: string) => set(() => {
     rr[campo][a.id] = val;
+    if (campo !== 'q') delete rr.fonte[a.id]; // preço digitado à mão deixa de ser "automático"
     const q = lerNum(rr.q[a.id]);
-    if (campo === 'v') { const v = lerNum(val); rr.p[a.id] = q && v ? paraCampo(v / q) : ''; }
+    if (campo === 'v') { const v = lerNum(val); rr.p[a.id] = q && v ? fmtP(v / q) : ''; }
     else { const p = lerNum(rr.p[a.id]); if (q && p) rr.v[a.id] = paraCampo(q * p); else if (campo === 'q' && !q) rr.v[a.id] = ''; }
   });
 
@@ -213,6 +303,17 @@ export function fechar(c: Ctx) {
           <label for="f-data">Data do fechamento</label>
           <div class="inp"><input id="f-data" type="date" .value=${live(rr.data)} @input=${(e: Event) => set(() => (rr.data = txt(e)))}></div>
         </div>
+        <div class="field" style="justify-content:flex-end;align-items:flex-start">
+          <button type="button" class="btn ${rr.cotadoEm === rr.data ? 'ghost' : ''}" ?disabled=${rr.buscando} @click=${() => buscarCotacoes(c, rr)}>
+            ${rr.buscando ? 'Buscando cotações…' : rr.cotadoEm === rr.data ? 'Buscar cotações de novo' : `Buscar cotações de ${/^\d{4}-\d{2}-\d{2}$/.test(rr.data) ? dataBr(rr.data) : '…'}`}</button>
+        </div>
+      </div>
+      <div aria-live="polite">
+        ${rr.cotadoEm && rr.cotadoEm !== rr.data && !rr.buscando ? html`<p class="tip" style="margin-top:12px">A data mudou: as cotações são de ${dataBr(rr.cotadoEm)}. Busque de novo.</p>` : ''}
+        ${rr.cotadoEm === rr.data && !rr.buscando ? html`<p class="tip" style="margin-top:12px">Preços preenchidos com o fechamento do último pregão até ${dataBr(rr.data)}${rr.fatorCdi ? html`; CDI no período: <b>${pctS(rr.fatorCdi - 1, 2)}</b>` : ''}. Confira e ajuste o que for preciso.</p>` : ''}
+        ${rr.infosCot.map((x) => html`<p class="tip" style="margin-top:8px">${x}</p>`)}
+        ${rr.avisosCot.length ? html`<div class="note" style="margin-top:12px">${ic.alerta()}<span>${rr.avisosCot.length === 1 ? rr.avisosCot[0] : html`Algumas cotações não vieram:<br>${rr.avisosCot.map((x) => html`${x}<br>`)}`}
+          ${rr.avisosCot.some((x) => x.includes('brapi')) ? html` <a href="#/ajustes">Ir para Ajustes</a>` : ''}</span></div>` : ''}
       </div>
     </div>
 
@@ -232,10 +333,10 @@ export function fechar(c: Ctx) {
             </div>
             <div class="cls-body">
               ${x.lin.length ? html`
-                <div class="row-h ${cot ? 'cot' : ''}" aria-hidden="true"><span>Ativo</span>${cot ? html`<span>Qtd</span><span>Preço</span>` : ''}<span>Valor</span></div>
+                <div class="row-h ${cot ? 'cot' : ''}" aria-hidden="true"><span>Ativo</span>${cot ? (x.k.id === 'dolar' ? html`<span>US$</span><span>PTAX</span>` : html`<span>Qtd</span><span>Preço</span>`) : ''}<span>Valor</span></div>
                 ${x.lin.map((a) => html`
                   <div class="row-a ${cot ? 'cot' : ''}">
-                    <span class="nome" title=${a.nome}>${a.nome}${a.arquivado ? html`<small>arquivado</small>` : ''}</span>
+                    <span class="nome" title=${a.nome}>${a.nome}${a.arquivado ? html`<small>arquivado</small>` : ''}${rr.fonte[a.id] ? html`<small title=${`${rr.fonte[a.id].fonte}, ${dataBr(rr.fonte[a.id].data)}`}>✓ ${rr.fonte[a.id].fonte.split(' ')[0]} ${rr.fonte[a.id].data.slice(8, 10)}/${rr.fonte[a.id].data.slice(5, 7)}</small>` : ''}${x.k.id === 'cdb' && a.taxaCdi ? html`<small>${a.taxaCdi}% CDI</small>` : ''}</span>
                     ${cot ? html`
                       <div class="inp"><input class="num" inputmode="decimal" aria-label=${`Quantidade de ${a.nome}`} .value=${live(rr.q[a.id] ?? '')} @input=${(e: Event) => cotacao(a, 'q', txt(e))}></div>
                       <div class="inp"><span class="pre">R$</span><input class="num" inputmode="decimal" placeholder="0,00" aria-label=${`Preço de ${a.nome}`} .value=${live(rr.p[a.id] ?? '')} @input=${(e: Event) => cotacao(a, 'p', txt(e))}></div>` : ''}
@@ -251,13 +352,18 @@ export function fechar(c: Ctx) {
                   <div class="inp"><span class="pre">R$</span><input id=${'tot-' + x.k.id} class="num" inputmode="decimal" .value=${live(rr.totCls[x.k.id] ?? '')} @input=${(e: Event) => set(() => (rr.totCls[x.k.id] = txt(e)))}></div>
                 </div>` : ''}
               <div class="cls-foot">
-                <div class="inp" style="flex:1 1 200px;min-height:36px"><input placeholder=${cot ? 'Novo papel (ex.: PETR4)…' : `Novo item de ${x.k.nome} (ex.: CDB Banco X)…`}
+                <div class="inp" style="flex:1 1 200px;min-height:36px"><input placeholder=${`Novo item de ${x.k.nome} (ex.: ${EXEMPLO[x.k.id]})…`}
                   aria-label=${`Nome do novo ativo de ${x.k.nome}`} .value=${live(n.nome)}
                   @input=${(e: Event) => { rr.novo[x.k.id] = { ...n, nome: txt(e) }; }}
                   @keydown=${(e: KeyboardEvent) => { if (e.key === 'Enter') { e.preventDefault(); void adicionar(x.k.id); } }}></div>
                 ${cot ? html`<div class="inp" style="flex:0 1 110px;min-height:36px"><input class="num" placeholder="Qtd" inputmode="decimal" aria-label="Quantidade" .value=${live(n.q)} @input=${(e: Event) => { rr.novo[x.k.id] = { ...n, q: txt(e) }; }}></div>` : ''}
                 <button type="button" class="btn sm ghost" @click=${() => adicionar(x.k.id)}>${ic.mais(14)}Adicionar</button>
-                ${x.parcial && x.resto > 0.004 && x.lin.length ? html`<button type="button" class="btn link" @click=${() => set(() => (rr.totCls[x.k.id] = paraCampo(x.soma)))}>Já detalhei tudo: zerar “não detalhado”</button>` : ''}
+                ${rr.fatorCdi && (x.k.id === 'cdb' || x.k.id === 'caixa') && x.tot ? html`<button type="button" class="btn link" title="Valor do fechamento anterior corrigido pelo CDI do período (ou pela taxa cadastrada no ativo)"
+                  @click=${() => set(() => {
+                    for (const a of x.lin) { const v = sugestaoCdi(rr, a, x.k.id, c.s.estado.ativos); if (v) rr.v[a.id] = paraCampo(v); }
+                    if (x.parcial) { const t = sugestaoCdi(rr, null, x.k.id, c.s.estado.ativos); if (t) rr.totCls[x.k.id] = paraCampo(t); }
+                  })}>Corrigir pelo CDI (${pct(rr.fatorCdi - 1, 2)})</button>` : ''}
+                ${x.parcial && Math.abs(x.resto) > 0.004 && x.lin.length ? html`<button type="button" class="btn link" @click=${() => set(() => (rr.totCls[x.k.id] = paraCampo(x.soma)))}>${x.resto > 0 ? 'Já detalhei tudo: zerar “não detalhado”' : 'Usar a soma dos itens como total da classe'}</button>` : ''}
               </div>
             </div>
           </div>`;

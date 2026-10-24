@@ -1,6 +1,6 @@
 import { html } from 'lit-html';
 import { ehLegado, ehSeed, migrar } from '../migrate';
-import { importarSeed, restaurar, sair, usuario } from '../store';
+import { importarSeed, restaurar, sair, salvarConfig, usuario } from '../store';
 import type { Estado } from '../types';
 import { pref, setPref, type Ctx } from './ctx';
 import { confirmar, toast } from './feedback';
@@ -14,7 +14,9 @@ export function aplicarTema(t: Tema = pref<Tema>('tema', 'sistema')) {
 }
 
 function baixarBackup(e: Estado) {
-  const u = URL.createObjectURL(new Blob([JSON.stringify({ formato: 'nosso-patrimonio', versao: 2, ...e }, null, 1)], { type: 'application/json' }));
+  // o token do brapi não vai para o arquivo: backups costumam ir para e-mail e Drive
+  const { brapiToken: _, ...config } = e.config;
+  const u = URL.createObjectURL(new Blob([JSON.stringify({ formato: 'nosso-patrimonio', versao: 2, ...e, config }, null, 1)], { type: 'application/json' }));
   const a = document.createElement('a');
   a.href = u; a.download = `nosso-patrimonio-${new Date().toISOString().slice(0, 10)}.json`; a.click();
   setTimeout(() => URL.revokeObjectURL(u), 1000);
@@ -30,7 +32,7 @@ async function importar(c: Ctx, f: File) {
     const n = await importarSeed(d);
     return toast(n ? `Histórico de quantidades aplicado a ${n} fechamentos.` : 'Nenhum fechamento com a mesma data foi encontrado.');
   }
-  const estado = ehNovo(d) ? { ativos: d.ativos, meses: d.meses, config: d.config ?? { metas: {}, versao: 2 } } : ehLegado(d) ? migrar(d) : null;
+  const estado = ehNovo(d) ? { ativos: d.ativos, meses: d.meses, config: { ...(d.config ?? { metas: {}, versao: 2 }), brapiToken: c.s.estado.config.brapiToken } } : ehLegado(d) ? migrar(d) : null;
   if (!estado) return toast('Arquivo não reconhecido como backup do Nosso Patrimônio.', { erro: true });
   const atual = c.s.estado.meses.length;
   const ok = await confirmar('Restaurar backup?',
@@ -59,6 +61,25 @@ export function ajustes(c: Ctx) {
       <div class="seg" role="group" aria-label="Tema">
         ${temas.map(([t, rot]) => html`<button type="button" aria-pressed=${tema === t} @click=${() => { setPref('tema', t); aplicarTema(t); c.redesenhar(); }}>${rot}</button>`)}
       </div>
+    </section>
+
+    <section class="card" aria-labelledby="h-cot">
+      <h2 id="h-cot">Cotações automáticas</h2>
+      <p class="cap">Dólar (PTAX do Banco Central), CDI e cripto (CoinGecko) já funcionam sem cadastro. Para ações, FIIs e ETFs da B3 é preciso um token gratuito do brapi.dev.</p>
+      <ol class="tip" style="margin:0 0 14px;padding-left:20px;line-height:1.8">
+        <li>Crie uma conta grátis em <a href="https://brapi.dev/dashboard" target="_blank" rel="noopener noreferrer">brapi.dev</a> e copie o token.</li>
+        <li>Cole aqui e salve. Ele fica guardado só na nuvem de vocês e vale para os dois.</li>
+      </ol>
+      <form style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end" @submit=${(e: Event) => {
+        e.preventDefault();
+        const v = ((e.target as HTMLFormElement).elements.namedItem('token') as HTMLInputElement).value.trim();
+        void salvarConfig({ ...c.s.estado.config, brapiToken: v || undefined });
+        toast(v ? 'Token salvo. As ações serão cotadas no próximo fechamento.' : 'Token removido.');
+      }}>
+        <div class="field" style="flex:1 1 320px"><label for="t-brapi">Token do brapi ${c.s.estado.config.brapiToken ? html`<span class="hint">· configurado ✓</span>` : ''}</label>
+          <div class="inp"><input id="t-brapi" name="token" type="password" autocomplete="off" spellcheck="false" placeholder=${c.s.estado.config.brapiToken ? '••••••••  (cole outro para trocar)' : 'cole o token aqui…'}></div></div>
+        <button class="btn" type="submit">Salvar token</button>
+      </form>
     </section>
 
     <section class="card" aria-labelledby="h-bk">

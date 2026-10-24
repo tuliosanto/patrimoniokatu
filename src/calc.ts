@@ -6,7 +6,7 @@ export const CLASSES: Classe[] = [
   { id: 'acoes', nome: 'Ações', grupo: 'rv', cotada: true },
   { id: 'fii', nome: 'FII', grupo: 'rv', cotada: true },
   { id: 'etf_bdr', nome: 'ETF/BDR', grupo: 'rv', cotada: true },
-  { id: 'dolar', nome: 'Dólar', grupo: 'ext', cotada: false },
+  { id: 'dolar', nome: 'Dólar', grupo: 'ext', cotada: true }, // quantidade em US$ × PTAX
   { id: 'cripto', nome: 'Cripto', grupo: 'cri', cotada: true },
 ];
 export const GRUPOS: { id: GrupoId; nome: string }[] = [
