@@ -1,0 +1,170 @@
+@import "tailwindcss";
+
+/* ============================================================
+   Nosso Patrimônio — tokens da direção H (design/ROUND-2-CONTEXT.md)
+   Camada 1: primitivos  ·  Camada 2: papéis  ·  Camada 3: componentes (nos arquivos de src/components/ui)
+   ============================================================ */
+
+:root {
+  /* 1. Primitivos */
+  --h-lilas-50: #F4F1FA;   /* fundo */
+  --h-lilas-100: #EAE4F3;  /* realce de linha ao passar/selecionar */
+  --h-lilas-200: #D6CDE4;  /* traços finos de controle (não-texto) */
+  --h-lilas-500: #76648B;  /* rótulos — 4,74:1 sobre o fundo */
+  --h-ameixa-900: #2A1B3D; /* dados — 14,2:1 */
+  --h-laranja-700: #C2410C;/* o agora — 4,64:1 */
+  --h-vinho-800: #9F1239;  /* erro — 7,18:1 */
+  --h-branco: #FFFFFF;
+
+  --h-fonte-marco: 'Zodiak', 'Iowan Old Style', Georgia, serif;
+  --h-fonte-leitura: 'Amulya', ui-sans-serif, system-ui, sans-serif;
+
+  /* degraus da escada temporal */
+  --h-degrau: 0px;
+  --h-degrau-max: 0px;
+  --h-pausa: 2.5rem;
+
+  /* 2. Papéis */
+  --fundo: var(--h-lilas-50);
+  --dado: var(--h-ameixa-900);
+  --rotulo: var(--h-lilas-500);
+  --agora: var(--h-laranja-700);
+  --erro: var(--h-vinho-800);
+  --realce: var(--h-lilas-100);
+  --traco: var(--h-lilas-200);
+  --foco: var(--h-ameixa-900);
+  --dado-forte: #3B2A52;   /* hover do botão escuro */
+  --agora-forte: #A9380A;  /* hover do botão do agora */
+  --sombra: rgb(42 27 61 / 0.35);
+  --veu: rgb(42 27 61 / 0.45); /* fundo atrás das janelas */
+
+  /* 3. Componentes: os botões e campos usam os papéis acima diretamente (src/components/ui). */
+
+  /* Gráficos — validados com o script da skill dataviz sobre #F4F1FA (todos os pares, visão normal e daltonismo).
+     Laranja (--agora) só no último ponto de gráficos de UMA série; com várias séries, o "hoje" é marcado por texto. */
+  --serie-1: #6B3FA0; /* violeta: a carteira */
+  --serie-2: #0C7FA6; /* azul-petróleo: CDI / aportado / preço médio */
+  --serie-3: #3D7F3A; /* verde: Ibovespa */
+  --serie-4: #B0567F; /* rosa: 4º grupo. Separação para daltonismo na faixa 6–8: sempre com rótulo direto no fim da linha. */
+}
+
+@theme inline {
+  --color-fundo: var(--fundo);
+  --color-dado: var(--dado);
+  --color-rotulo: var(--rotulo);
+  --color-agora: var(--agora);
+  --color-erro: var(--erro);
+  --color-realce: var(--realce);
+  --color-traco: var(--traco);
+
+  --font-marco: var(--h-fonte-marco);
+  --font-sans: var(--h-fonte-leitura);
+}
+
+@layer base {
+  html { background: var(--fundo); color-scheme: light; }
+  :root[data-cores='noite'] { color-scheme: dark; }
+  body {
+    margin: 0;
+    background: var(--fundo);
+    color: var(--dado);
+    font-family: var(--h-fonte-leitura);
+    font-size: 16px;
+    line-height: 1.45;
+    font-variant-numeric: tabular-nums;
+    -webkit-font-smoothing: antialiased;
+  }
+  :focus-visible { outline: 2px solid var(--foco); outline-offset: 3px; }
+  html { -webkit-tap-highlight-color: transparent; }
+  a, button, input, select, label { touch-action: manipulation; }
+  h1, h2, h3 { text-wrap: balance; }
+  ::selection { background: var(--realce); }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+  }
+}
+
+@layer components {
+  .marco { font-family: var(--h-fonte-marco); font-variant-numeric: lining-nums proportional-nums; }
+  .rotulo { color: var(--rotulo); font-size: 13px; font-weight: 500; letter-spacing: 0.04em; }
+  .agora { color: var(--agora); }
+
+  /* A escada: cada degrau recua 8vw, até 40vw; no celular, 4vw. */
+  .degrau-1 { margin-left: min(calc(var(--h-degrau) * 1), var(--h-degrau-max)); }
+  .degrau-2 { margin-left: min(calc(var(--h-degrau) * 2), var(--h-degrau-max)); }
+  .degrau-3 { margin-left: min(calc(var(--h-degrau) * 3), var(--h-degrau-max)); }
+  .degrau-4 { margin-left: min(calc(var(--h-degrau) * 4), var(--h-degrau-max)); }
+  .degrau-5 { margin-left: var(--h-degrau-max); }
+  @media (max-width: 640px) {
+    .degrau-1, .degrau-2, .degrau-3, .degrau-4, .degrau-5 { margin-left: 4vw; }
+  }
+  .pausa { margin-top: var(--h-pausa); }
+
+  .linha { display: grid; grid-template-columns: minmax(7rem, 14rem) auto; column-gap: 1.5rem; padding: 0.18em 0; align-items: baseline; }
+  .linha > :last-child { text-align: right; white-space: nowrap; }
+
+  .chegada { font-family: var(--h-fonte-marco); font-weight: 700; letter-spacing: -0.04em; line-height: 0.9;
+             font-size: clamp(34px, 6vw, 84px); white-space: nowrap; color: var(--agora); font-variant-numeric: lining-nums proportional-nums; }
+}
+
+/* ============================================================
+   Combinações de cores da H (Ajustes › Cores). A estrutura, as fontes e a regra
+   "uma cor para o agora" ficam; mudam só os papéis. Cada aparelho guarda a sua.
+   Contraste conferido (texto ≥ 4,5:1 sobre o fundo; rótulos também sobre o realce)
+   e séries dos gráficos validadas com o script da skill dataviz sobre o fundo de cada uma.
+   ============================================================ */
+:root[data-cores='areia'] {
+  --fundo: #F5F0E8; --realce: #EAE2D4; --traco: #D8CBB6; --rotulo: #6F5D48; --dado: #2A2018; --foco: #2A2018;
+  --agora: #B03A1E; --erro: #9F1239; --dado-forte: #43352A; --agora-forte: #93301A; --sombra: rgb(42 32 24 / 0.3);
+  --serie-1: #A3471A; --serie-2: #1F6A99; --serie-3: #2A9D8F; --serie-4: #C08A00;
+}
+:root[data-cores='salvia'] {
+  --fundo: #EEF3EF; --realce: #DFE8E1; --traco: #C6D4C9; --rotulo: #566A5E; --dado: #18291F; --foco: #18291F;
+  --agora: #B4431A; --erro: #A3123A; --dado-forte: #2A4134; --agora-forte: #963815; --sombra: rgb(24 41 31 / 0.3);
+  --serie-1: #1F6A99; --serie-2: #A3471A; --serie-3: #2A9D8F; --serie-4: #C08A00;
+}
+:root[data-cores='nevoa'] {
+  --fundo: #EDF1F6; --realce: #DEE5EF; --traco: #C5D0DF; --rotulo: #53647A; --dado: #141E30; --foco: #141E30;
+  --agora: #C0360F; --erro: #9F1239; --dado-forte: #26344D; --agora-forte: #A12D0C; --sombra: rgb(20 30 48 / 0.3);
+  --serie-1: #2F5FA8; --serie-2: #A3471A; --serie-3: #2A9D8F; --serie-4: #C08A00;
+}
+:root[data-cores='rose'] {
+  --fundo: #F7EFEF; --realce: #EEE0E0; --traco: #DEC8C9; --rotulo: #77575F; --dado: #36161F; --foco: #36161F;
+  --agora: #0F6F63; --erro: #9F1239; --dado-forte: #4E2531; --agora-forte: #0B5A50; --sombra: rgb(54 22 31 / 0.3);
+  --serie-1: #A64A75; --serie-2: #2A9D8F; --serie-3: #C08A00; --serie-4: #2F5FA8;
+}
+/* Escura: séries validadas no modo dark (pares vizinhos); as linhas de grupo levam rótulo direto. */
+:root[data-cores='noite'] {
+  color-scheme: dark;
+  --fundo: #17121F; --realce: #272035; --traco: #3A3049; --rotulo: #A596BB; --dado: #EFE9F7; --foco: #EFE9F7;
+  --agora: #FB8A3C; --erro: #FB7185; --dado-forte: #D6CCE5; --agora-forte: #FDA45F; --sombra: rgb(0 0 0 / 0.55); --veu: rgb(0 0 0 / 0.6);
+  --serie-1: #9085E9; --serie-2: #D95926; --serie-3: #199E70; --serie-4: #C98500;
+}
+
+/* Movimento (skill motion: CSS para entradas simples; curto, sem quique — é um app de finanças).
+   Com "reduzir movimento" ligado, a regra no @layer base zera todas as durações. */
+@keyframes h-entra { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes h-esmaece { from { opacity: 0; } to { opacity: 1; } }
+.tela-entra { animation: h-entra 220ms cubic-bezier(0.2, 0, 0, 1) both; }
+/* No Início, os degraus descem em sequência, do passado ao presente. */
+.escada > .pausa, .escada > section { animation: h-entra 300ms cubic-bezier(0.2, 0, 0, 1) both; }
+.escada > :nth-child(2) { animation-delay: 60ms; }
+.escada > :nth-child(3) { animation-delay: 120ms; }
+.escada > :nth-child(4) { animation-delay: 180ms; }
+.escada > :nth-child(5) { animation-delay: 240ms; }
+.escada > :nth-child(6) { animation-delay: 300ms; }
+.escada > :nth-child(7) { animation-delay: 360ms; }
+.escada > :nth-child(n + 8) { animation-delay: 420ms; }
+[data-slot='dialog-overlay'][data-state='open'], [data-slot='alert-dialog-overlay'][data-state='open'] { animation: h-esmaece 180ms ease-out both; }
+[data-slot='dialog-content'][data-state='open'], [data-slot='alert-dialog-content'][data-state='open'] { animation: h-esmaece 180ms ease-out both; }
+
+/* Painel: blocos lado a lado no computador, empilhados no celular. */
+.painel { display: grid; gap: 2rem 3rem; grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr)); align-items: start; }
+.painel > .pausa, .painel > section { margin-top: 0; }
+.colunas { columns: 3 15rem; column-gap: 3rem; }
+.colunas > * { break-inside: avoid; }
+
+/* Ao chegar por um atalho, o destino pisca em lilás e volta ao fundo. */
+@keyframes h-alvo { from { background: var(--realce); } to { background: transparent; } }
+.alvo { animation: h-alvo 1400ms ease-out both; scroll-margin-top: 1.5rem; }
+[id] { scroll-margin-top: 1.5rem; }

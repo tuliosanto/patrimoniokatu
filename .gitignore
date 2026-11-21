@@ -11,3 +11,11 @@ dist/
 .mcp.json
 bencium-claude-code-design-skill/
 .DS_Store
+
+# Planilhas financeiras: NUNCA versionar
+docs/
+*.xlsx
+*.xls
+
+# Rodadas de design com valores reais da família: não versionar
+design/round-1/
