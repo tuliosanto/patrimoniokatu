@@ -6,13 +6,19 @@ import { Degrau, Linha } from '../partes/Degrau';
 import { useResumo } from '../resumo';
 import { ir, type Params, type Tela } from '../rota';
 import { Para } from '../partes/Para';
+import { Agora } from '../partes/Agora';
+import { Rosca, type CorSerie } from '../partes/Rosca';
+import { useMemo } from 'react';
 
 /** Ao tocar num grupo, a Carteira abre na classe principal dele. */
 const CLASSE_DO_GRUPO = { rf: 'cdb', rv: 'acoes', cri: 'cripto', ext: 'dolar' } as const;
+/** Cor fixa de cada grupo (a cor segue o grupo, nunca a posição). */
+const COR_DO_GRUPO: Record<keyof typeof CLASSE_DO_GRUPO, CorSerie> = { rf: '--serie-1', rv: '--serie-2', cri: '--serie-3', ext: '--serie-4' };
 
 export function Inicio() {
   const r = useResumo();
   const { estado: e } = r;
+  const fatias = useMemo(() => GRUPOS.map((g) => ({ nome: g.nome, valor: r.porGrupo?.[g.id] ?? 0, cor: COR_DO_GRUPO[g.id] })), [r.porGrupo]);
 
   if (!r.ultimo) {
     return (
@@ -54,11 +60,15 @@ export function Inicio() {
         </div>
       </section>
 
+      <Agora e={e} ultimo={r.ultimo} totalFechado={total} />
+
       <div className="painel pausa">
         <Degrau nivel={0} titulo="Por grupo" id="grupos">
+          <Rosca fatias={fatias} centro={brl(total)} formato={brl}
+            descricao={`Divisão do patrimônio por grupo: ${GRUPOS.map((g) => `${g.nome} ${total ? pct(r.porGrupo[g.id] / total) : '—'}`).join(', ')}.`} />
           {GRUPOS.map((g) => (
             <div key={g.id} className="grid grid-cols-[minmax(0,1fr)_4.5ch_auto] items-baseline gap-x-3 py-0.5">
-              <span><Para tela="carteira" params={{ classe: CLASSE_DO_GRUPO[g.id] }} discreto>{g.nome}</Para>{g.id === 'ext' && r.ultimo!.posicoes.dolar?.q ? <span className="ml-2 text-[13px] text-rotulo">{usd(r.ultimo!.posicoes.dolar.q)}</span> : null}</span>
+              <span><span aria-hidden="true" className="mr-2 inline-block size-2.5 rounded-full align-middle" style={{ background: `var(${COR_DO_GRUPO[g.id]})` }} /><Para tela="carteira" params={{ classe: CLASSE_DO_GRUPO[g.id] }} discreto>{g.nome}</Para>{g.id === 'ext' && r.ultimo!.posicoes.dolar?.q ? <span className="ml-2 text-[13px] text-rotulo">{usd(r.ultimo!.posicoes.dolar.q)}</span> : null}</span>
               <span className="text-right text-rotulo">{total ? pct(r.porGrupo[g.id] / total) : '—'}</span>
               <span className="whitespace-nowrap text-right">{brl(r.porGrupo[g.id])}</span>
             </div>

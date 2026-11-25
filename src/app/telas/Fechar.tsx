@@ -5,9 +5,9 @@ import { Input } from '@/components/ui/input';
 import { CLASSES } from '@/domain/classes';
 import { ehCotada, r2, reservado } from '@/domain/carteira';
 import { fechamentoAnterior, montarFechamento, quantidadesNaData } from '@/domain/fechar';
-import type { Ativo, ClasseId, Estado } from '@/domain/tipos';
-import { cotacaoDoAtivo, motivo } from '@/data/cotacaoAtivo';
-import { cdi, criptos } from '@/data/cotacoes';
+import type { ClasseId, Estado } from '@/domain/tipos';
+import { cdi } from '@/data/cotacoes';
+import { atualizarCotacoes, cotacoesSalvas } from '@/data/cotacoesSalvas';
 import { salvarFechamento, useEstado } from '@/data/store';
 import { brl, comSinal, dataBr, fimDoMes, hojeIso, lerNumero, mesAtual, mesesEntre, mesExtenso, num, paraCampo, pct, somarMeses } from '@/lib/formato';
 import { cn } from '@/lib/utils';
@@ -24,22 +24,21 @@ const dataPadrao = (ref: string) => { const h = hojeIso(); return fimDoMes(ref) 
 const lerTodos = (xs: Record<string, string>) => Object.fromEntries(Object.entries(xs).map(([k, v]) => [k, lerNumero(v)]));
 type Textos = Record<string, string>;
 
-/** Busca as cotações e o CDI do período, em paralelo. Devolve preços como texto de campo e o status de cada ativo. */
+/** Busca só as cotações que faltam (as já guardadas para a data são reaproveitadas) e o CDI do período.
+    Devolve preços como texto de campo e o status de cada ativo. */
 async function buscarCotacoes(e: Estado, ref: string, data: string) {
-  const qtd = quantidadesNaData(e, ref, data);
-  const ativos = e.ativos.filter((a) => !a.arquivado && ehCotada(a) && qtd[a.id] > 0);
-  const precos: Textos = {}, status: Textos = {};
-  const ok = (a: Ativo, preco: number, d: string) => { precos[a.id] = paraCampo(preco, 6); status[a.id] = d !== data ? `cotação de ${dataBr(d)}` : 'ok'; };
-  const cri = ativos.filter((a) => a.classe === 'cripto');
-  const outros = ativos.filter((a) => a.classe !== 'cripto' && (a.classe === 'dolar' || e.config.brapiToken));
   const anterior = fechamentoAnterior(e.fechamentos, ref, data);
-  const [, , fator] = await Promise.all([
-    cri.length ? criptos(cri.map(rotuloAtivo), data).then((r) => {
-      for (const a of cri) { const c = r[rotuloAtivo(a)]; if (c) ok(a, c.preco, c.data); else status[a.id] = 'cotação não encontrada'; }
-    }).catch((x) => { for (const a of cri) status[a.id] = motivo(x); }) : null,
-    Promise.all(outros.map((a) => cotacaoDoAtivo(a, data, e.config.brapiToken).then((c) => ok(a, c.preco, c.data)).catch((x) => { status[a.id] = motivo(x); }))),
-    anterior ? cdi(anterior.data, data).catch(() => null) : null,
-  ]);
+  const [falhas, fator] = await Promise.all([atualizarCotacoes(e, data, ref), anterior ? cdi(anterior.data, data).catch(() => null) : null]);
+  const qtd = quantidadesNaData(e, ref, data);
+  const salvas = cotacoesSalvas();
+  const precos: Textos = {}, status: Textos = { ...falhas };
+  for (const a of e.ativos) {
+    if (a.arquivado || !ehCotada(a) || !(qtd[a.id] > 0) || falhas[a.id]) continue;
+    const c = salvas[a.id];
+    if (c?.para !== data) continue;
+    precos[a.id] = paraCampo(c.p, 6);
+    status[a.id] = c.d !== data ? `cotação de ${dataBr(c.d)}` : 'ok';
+  }
   return { precos, status, fatorCdi: fator };
 }
 

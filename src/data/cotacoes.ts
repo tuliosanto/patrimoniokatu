@@ -120,10 +120,25 @@ export async function cripto(codigo: string, data: string): Promise<Cotacao | nu
   return p ? { preco: p, data, fonte: 'CoinGecko' } : null;
 }
 
-export async function b3(ticker: string, data: string, token: string): Promise<Cotacao | null> {
+/* O plano gratuito do brapi aceita uma consulta por vez: as buscas entram numa fila
+   e, se o limite for atingido mesmo assim, esperam e tentam de novo (até 4 vezes). */
+let filaB3: Promise<unknown> = Promise.resolve();
+const espera = (ms: number) => new Promise((r) => setTimeout(r, ms));
+async function comRetentativa<T>(f: () => Promise<T>): Promise<T> {
+  for (let i = 0; ; i++) {
+    try { return await f(); } catch (e) {
+      if ((e as { status?: number }).status !== 429 || i >= 3) throw e;
+      await espera(1500 * 2 ** i);
+    }
+  }
+}
+
+export function b3(ticker: string, data: string, token: string): Promise<Cotacao | null> {
   const t = encodeURIComponent(ticker.trim().toUpperCase());
-  const r = await json<RespBrapi>(`https://brapi.dev/api/quote/${t}?range=3mo&interval=1d&token=${encodeURIComponent(token)}`);
-  return precoBrapi(r, data);
+  const url = `https://brapi.dev/api/quote/${t}?range=3mo&interval=1d&token=${encodeURIComponent(token)}`;
+  const vez = filaB3.then(() => comRetentativa(() => json<RespBrapi>(url)));
+  filaB3 = vez.catch(() => undefined);
+  return vez.then((r) => precoBrapi(r, data));
 }
 
 /** Mensagem legível para um erro de busca. */

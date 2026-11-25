@@ -138,7 +138,7 @@
   color-scheme: dark;
   --fundo: #17121F; --realce: #272035; --traco: #3A3049; --rotulo: #A596BB; --dado: #EFE9F7; --foco: #EFE9F7;
   --agora: #FB8A3C; --erro: #FB7185; --dado-forte: #D6CCE5; --agora-forte: #FDA45F; --sombra: rgb(0 0 0 / 0.55); --veu: rgb(0 0 0 / 0.6);
-  --serie-1: #9085E9; --serie-2: #D95926; --serie-3: #199E70; --serie-4: #C98500;
+  --serie-1: #9085E9; --serie-2: #D95926; --serie-3: #199E70; --serie-4: #DD74AC;
 }
 
 /* Movimento (skill motion: CSS para entradas simples; curto, sem quique — é um app de finanças).
